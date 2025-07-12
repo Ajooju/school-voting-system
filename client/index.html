@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>School Voting System</title>
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    .candidate { margin-bottom: 10px; }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <h1>School Voting System</h1>
+    <div>
+      <input v-model="newCandidate" placeholder="Candidate name" />
+      <button @click="addCandidate">Register Candidate</button>
+    </div>
+    <h2>Candidates</h2>
+    <div class="candidate" v-for="c in candidates" :key="c.id">
+      <strong>{{ c.name }}</strong> - Votes: {{ c.votes }}
+      <button @click="vote(c.id)">Vote</button>
+    </div>
+    <h2>Results</h2>
+    <ul>
+      <li v-for="c in candidates" :key="c.id">{{ c.name }}: {{ c.votes }}</li>
+    </ul>
+  </div>
+  <script>
+    const { createApp } = Vue;
+    createApp({
+      data() {
+        return {
+          newCandidate: '',
+          candidates: []
+        };
+      },
+      methods: {
+        loadResults() {
+          fetch('/api/results').then(r => r.json()).then(data => {
+            this.candidates = data;
+          });
+        },
+        addCandidate() {
+          fetch('/api/candidates', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: this.newCandidate })
+          }).then(() => {
+            this.newCandidate = '';
+            this.loadResults();
+          });
+        },
+        vote(id) {
+          fetch('/api/vote', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ candidateId: id })
+          }).then(() => this.loadResults());
+        }
+      },
+      mounted() {
+        this.loadResults();
+      }
+    }).mount('#app');
+  </script>
+</body>
+</html>
