@@ -1,0 +1,11 @@
+{
+  "name": "school-voting-system",
+  "version": "1.0.0",
+  "description": "Multi-election, multi-ballot voting system with admin controls",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node src/server.js",
+    "test": "node --test"
+  }
+}
