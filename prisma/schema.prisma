@@ -1,0 +1,316 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum DocumentType {
+  INVOICE   @map("invoice")
+  QUOTATION @map("quotation")
+  RECEIPT   @map("receipt")
+}
+
+enum InvoiceStatus {
+  DRAFT          @map("draft")
+  FINALIZED      @map("finalized")
+  SENT           @map("sent")
+  PARTIALLY_PAID @map("partially_paid")
+  PAID           @map("paid")
+  OVERDUE        @map("overdue")
+  CANCELLED      @map("cancelled")
+}
+
+enum QuotationStatus {
+  DRAFT     @map("draft")
+  FINALIZED @map("finalized")
+  SENT      @map("sent")
+  ACCEPTED  @map("accepted")
+  REJECTED  @map("rejected")
+  EXPIRED   @map("expired")
+  CONVERTED @map("converted")
+}
+
+enum PaymentMethod {
+  CASH          @map("cash")
+  BANK_TRANSFER @map("bank_transfer")
+  CARD          @map("card")
+  CHEQUE        @map("cheque")
+  OTHER         @map("other")
+}
+
+enum TemplateType {
+  INVOICE   @map("invoice")
+  QUOTATION @map("quotation")
+}
+
+enum TemplateSourceType {
+  VISUAL      @map("visual")
+  DOCX_IMPORT @map("docx_import")
+  PDF_OVERLAY @map("pdf_overlay")
+}
+
+enum TemplateFieldType {
+  TEXT     @map("text")
+  NUMBER   @map("number")
+  DATE     @map("date")
+  MONEY    @map("money")
+  IMAGE    @map("image")
+  BOOLEAN  @map("boolean")
+  MULTILINE @map("multiline")
+}
+
+enum TemplateFieldAlignment {
+  LEFT   @map("left")
+  CENTER @map("center")
+  RIGHT  @map("right")
+}
+
+model Currency {
+  code          String   @id @db.VarChar(3)
+  name          String
+  symbol        String
+  decimalPlaces Int      @default(2)
+  isEnabled     Boolean  @default(true)
+
+  businessProfiles BusinessProfile[]
+  invoices         Invoice[]
+  quotations       Quotation[]
+  invoicePayments  InvoicePayment[]
+
+  @@index([isEnabled])
+}
+
+model BusinessProfile {
+  id                  String   @id @default(cuid())
+  businessName        String
+  defaultCurrencyCode String   @db.VarChar(3)
+  logoFileUrl         String?
+  address             String?
+  phone               String?
+  email               String?
+  taxNumber           String?
+  notes               String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  defaultCurrency Currency    @relation(fields: [defaultCurrencyCode], references: [code], onUpdate: Cascade)
+  invoices        Invoice[]
+  quotations      Quotation[]
+
+  @@index([businessName])
+  @@index([defaultCurrencyCode])
+}
+
+model Customer {
+  id        String   @id @default(cuid())
+  name      String
+  email     String?
+  phone     String?
+  address   String?
+  taxNumber String?
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  invoices   Invoice[]
+  quotations Quotation[]
+
+  @@index([name])
+  @@index([email])
+}
+
+model DocumentNumberSequence {
+  id           String       @id @default(cuid())
+  documentType DocumentType
+  year         Int
+  lastNumber   Int          @default(0)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  @@unique([documentType, year])
+  @@index([year])
+}
+
+model Invoice {
+  id                String        @id @default(cuid())
+  quotationId       String?       @unique
+  businessProfileId String
+  customerId        String
+  invoiceNumber     String?       @unique
+  invoicePdfUrl     String?
+  status            InvoiceStatus @default(DRAFT)
+  currencyCode      String        @db.VarChar(3)
+  issueDate         DateTime
+  dueDate           DateTime?
+  subtotalAmount    Int           @default(0)
+  taxAmount         Int           @default(0)
+  discountAmount    Int           @default(0)
+  totalAmount       Int           @default(0)
+  paidAmount        Int           @default(0)
+  balanceDue        Int           @default(0)
+  notes             String?
+  terms             String?
+  finalizedAt       DateTime?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  quotation       Quotation?          @relation(fields: [quotationId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  businessProfile BusinessProfile     @relation(fields: [businessProfileId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  customer        Customer            @relation(fields: [customerId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  currency        Currency            @relation(fields: [currencyCode], references: [code], onUpdate: Cascade)
+  lineItems       InvoiceLineItem[]
+  payments        InvoicePayment[]
+
+  @@index([businessProfileId])
+  @@index([customerId])
+  @@index([currencyCode])
+  @@index([status])
+  @@index([issueDate])
+  @@index([dueDate])
+  @@index([finalizedAt])
+}
+
+model InvoiceLineItem {
+  id              String  @id @default(cuid())
+  invoiceId       String
+  description     String
+  quantity        Decimal @db.Decimal(12, 4)
+  unitPriceAmount Int
+  discountAmount  Int     @default(0)
+  taxRateBps      Int     @default(0)
+  taxAmount       Int     @default(0)
+  lineTotalAmount Int
+  sortOrder       Int     @default(0)
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([invoiceId])
+  @@index([invoiceId, sortOrder])
+}
+
+model Quotation {
+  id                String          @id @default(cuid())
+  businessProfileId String
+  customerId        String
+  quotationNumber   String?         @unique
+  quotationPdfUrl   String?
+  status            QuotationStatus @default(DRAFT)
+  currencyCode      String          @db.VarChar(3)
+  issueDate         DateTime
+  expiryDate        DateTime?
+  subtotalAmount    Int             @default(0)
+  taxAmount         Int             @default(0)
+  discountAmount    Int             @default(0)
+  totalAmount       Int             @default(0)
+  notes             String?
+  terms             String?
+  finalizedAt       DateTime?
+  convertedAt       DateTime?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  businessProfile BusinessProfile      @relation(fields: [businessProfileId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  customer        Customer             @relation(fields: [customerId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  currency        Currency             @relation(fields: [currencyCode], references: [code], onUpdate: Cascade)
+  lineItems       QuotationLineItem[]
+  invoice         Invoice?
+
+  @@index([businessProfileId])
+  @@index([customerId])
+  @@index([currencyCode])
+  @@index([status])
+  @@index([issueDate])
+  @@index([expiryDate])
+  @@index([finalizedAt])
+  @@index([convertedAt])
+}
+
+model QuotationLineItem {
+  id              String  @id @default(cuid())
+  quotationId     String
+  description     String
+  quantity        Decimal @db.Decimal(12, 4)
+  unitPriceAmount Int
+  discountAmount  Int     @default(0)
+  taxRateBps      Int     @default(0)
+  taxAmount       Int     @default(0)
+  lineTotalAmount Int
+  sortOrder       Int     @default(0)
+
+  quotation Quotation @relation(fields: [quotationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([quotationId])
+  @@index([quotationId, sortOrder])
+}
+
+model InvoicePayment {
+  id              String        @id @default(cuid())
+  invoiceId       String
+  receiptNumber   String?       @unique
+  paymentDate     DateTime
+  amount          Int
+  currencyCode    String        @db.VarChar(3)
+  paymentMethod   PaymentMethod
+  referenceNumber String?
+  notes           String?
+  receiptPdfUrl   String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  invoice  Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  currency Currency @relation(fields: [currencyCode], references: [code], onUpdate: Cascade)
+
+  @@index([invoiceId])
+  @@index([currencyCode])
+  @@index([paymentDate])
+  @@index([paymentMethod])
+}
+
+model DocumentTemplate {
+  id              String             @id @default(cuid())
+  name            String
+  templateType    TemplateType
+  sourceType      TemplateSourceType
+  htmlContent     String?
+  cssContent      String?
+  editorJson      Json?
+  uploadedFileUrl String?
+  previewImageUrl String?
+  isDefault       Boolean            @default(false)
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  fields TemplateField[]
+
+  @@index([templateType])
+  @@index([sourceType])
+  @@index([isDefault])
+  @@index([templateType, isDefault])
+}
+
+model TemplateField {
+  id          String                  @id @default(cuid())
+  templateId  String
+  fieldKey    String
+  label       String
+  fieldType   TemplateFieldType
+  xPosition   Decimal?                @db.Decimal(10, 2)
+  yPosition   Decimal?                @db.Decimal(10, 2)
+  width       Decimal?                @db.Decimal(10, 2)
+  height      Decimal?                @db.Decimal(10, 2)
+  pageNumber  Int?
+  fontSize    Decimal?                @db.Decimal(5, 2)
+  alignment   TemplateFieldAlignment?
+  createdAt   DateTime                @default(now())
+  updatedAt   DateTime                @updatedAt
+
+  template DocumentTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([templateId, fieldKey])
+  @@index([templateId])
+  @@index([fieldType])
+}
